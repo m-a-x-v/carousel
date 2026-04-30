@@ -1,0 +1,39 @@
+.wrapper {
+    width: 100%;
+    overflow: hidden;
+    padding: 20px 0;
+  }
+  
+  .carousel {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding: 0 20px;
+    scroll-behavior: smooth;
+  }
+  
+  .carousel::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .item {
+    scroll-snap-align: center;
+    height: 250px;
+    border-radius: 16px;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: #eee;
+    transition: transform 0.3s ease;
+  }
+  
+  .item:hover {
+    transform: scale(1.05);
+  }
+  
+  .image {
+    height: 100%;
+    width: 100%;
+    object-fit: cover;
+    display: block;
+  }
