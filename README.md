@@ -1,73 +1,57 @@
-# React + TypeScript + Vite
+# Image Carousel
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Infinite scroll carousel built with React. Navigation is scroll-only - trackpad, touch and mouse wheel.
 
-Currently, two official plugins are available:
+## How it works
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Infinite loop - the clone trick
 
-## React Compiler
+Native `overflow-x: scroll` handles all scrolling. The browser runs this on the compositor thread with no JS per frame.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The DOM layout is:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+[ tail clones ] [ real images ] [ head clones ]
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Clones are copies of the last/first images wide enough to always cover the viewport (2000px). The user starts scrolled to the real content. When scroll drifts into a clone zone, one line of JS teleports `scrollLeft` by `realW` (the total width of the real content). Because clone pixels are identical to what they replace, the jump is invisible.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Loading
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Two sequential fetches combat the initial blank screen:
+
+1. **10 images** - resolves fast (~150ms), skeleton disappears, carousel is interactive
+2. **30 images** - loads in the background, carousel silently expands
+
+A shimmer skeleton covers the first fetch.
+
+### Performance
+
+| Problem | Fix | Saving |
+|---|---|---|
+| Full-res images decoded per scroll frame | Request Picsum at 2× display size via `/id/{id}/{w}/{h}` | ~99% fewer pixels decoded |
+| Image decode blocks main thread | `decoding="async"` on every `<img>` | Decode moved off main thread |
+| Scroll triggers page repaints | `will-change: scroll-position` | Browser promotes to GPU layer upfront |
+| All images fetch on load | `loading="lazy"` | Only images near the viewport fetch |
+
+## Structure
+
+```
+src/
+  hooks/
+    useImages.ts                    - two-step fetch (10 → 30 images)
+  components/ImageCarousel/
+    ImageCarousel.tsx               - carousel, clone math, scroll wiring
+    ImageCarousel.module.css
+    CarouselSkeleton.tsx            - shimmer placeholder
+    CarouselSkeleton.module.css
+  App.tsx                           - skeleton ↔ carousel swap
+  index.css                         - app layout
+```
+
+## Running
+
+```bash
+npm install
+npm run dev
 ```

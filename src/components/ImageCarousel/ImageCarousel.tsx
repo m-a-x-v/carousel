@@ -1,128 +1,90 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import styles from "./ImageCarousel.module.css";
 
-interface ImageItem {
+const HEIGHT = 250;
+const GAP = 16;
+const CLONE_PX = 2000;
+
+export interface ImageItem {
   id: string;
   download_url: string;
   width: number;
   height: number;
 }
 
-interface Props {
-  images: ImageItem[];
-}
+const imgW = (img: ImageItem) => (img.width / img.height) * HEIGHT;
 
-const ITEM_HEIGHT = 250;
+const imgSrc = (img: ImageItem) => {
+  const w = Math.round(imgW(img) * 2);
+  const h = HEIGHT * 2;
+  return `https://picsum.photos/id/${img.id}/${w}/${h}`;
+};
 
-export const ImageCarousel = ({ images }: Props) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+export function ImageCarousel({ images }: { images: ImageItem[] }) {
+  const ref = useRef<HTMLDivElement>(null);
 
-  const [virtualX, setVirtualX] = useState(0);
-  const isDragging = useRef(false);
-  const lastX = useRef(0);
+  const { all, cloneStartW, realW } = useMemo(() => {
+    if (!images.length) return { all: [], cloneStartW: 0, realW: 0 };
 
-  const widths = useMemo(() => {
-    return images.map((img) => (img.width / img.height) * ITEM_HEIGHT);
-  }, [images]);
-
-  const totalWidth = useMemo(() => {
-    return widths.reduce((a, b) => a + b, 0);
-  }, [widths]);
-
-  const visibleItems = useMemo(() => {
-    if (!containerRef.current) return [];
-
-    const viewportWidth = containerRef.current.clientWidth;
-    const items: {
-      img: ImageItem;
-      x: number;
-      width: number;
-      key: string;
-    }[] = [];
-
-    let x = -virtualX;
-
-    let i = 0;
-    while (x < viewportWidth) {
-      const index = i % images.length;
-      const width = widths[index];
-
-      items.push({
-        img: images[index],
-        x,
-        width,
-        key: `${images[index].id}-${i}`,
-      });
-
-      x += width;
-      i++;
+    const endClones: ImageItem[] = [];
+    let w = 0;
+    for (let i = images.length - 1; i >= 0 && w < CLONE_PX; i--) {
+      endClones.unshift(images[i]);
+      w += imgW(images[i]) + GAP;
     }
 
-    return items;
-  }, [virtualX, images, widths]);
+    const startClones: ImageItem[] = [];
+    w = 0;
+    for (let i = 0; i < images.length && w < CLONE_PX; i++) {
+      startClones.push(images[i]);
+      w += imgW(images[i]) + GAP;
+    }
+
+    return {
+      all: [...endClones, ...images, ...startClones],
+      cloneStartW: endClones.reduce((s, img) => s + imgW(img) + GAP, 0),
+      realW: images.reduce((s, img) => s + imgW(img) + GAP, 0),
+    };
+  }, [images]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    const el = ref.current;
+    if (!el || !realW) return;
 
-    const onDown = (e: MouseEvent) => {
-      isDragging.current = true;
-      lastX.current = e.clientX;
+    el.scrollLeft = cloneStartW;
+
+    const onScroll = () => {
+      if (el.scrollLeft < cloneStartW) el.scrollLeft += realW;
+      else if (el.scrollLeft >= cloneStartW + realW) el.scrollLeft -= realW;
     };
 
-    const onMove = (e: MouseEvent) => {
-      if (!isDragging.current) return;
-
-      const dx = e.clientX - lastX.current;
-      lastX.current = e.clientX;
-
-      setVirtualX((prev) => {
-        let next = prev - dx;
-
-        if (next < 0) next += totalWidth;
-        if (next > totalWidth) next -= totalWidth;
-
-        return next;
-      });
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      el.scrollLeft += e.deltaX || e.deltaY;
     };
 
-    const onUp = () => {
-      isDragging.current = false;
-    };
-
-    container.addEventListener("mousedown", onDown);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
-      container.removeEventListener("mousedown", onDown);
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", onWheel);
     };
-  }, [totalWidth]);
+  }, [cloneStartW, realW]);
+
+  if (!all.length) return null;
 
   return (
-    <div ref={containerRef} className={styles.wrapper}>
-      <div className={styles.track}>
-        {visibleItems.map(({ img, x, width, key }) => (
-          <div
-            key={key}
-            className={styles.item}
-            style={{
-              transform: `translateX(${x}px)`,
-              width: `${width}px`,
-              height: `${ITEM_HEIGHT}px`,
-            }}
-          >
-            <img
-              src={img.download_url}
-              alt=""
-              draggable={false}
-              className={styles.image}
-            />
-          </div>
-        ))}
-      </div>
+    <div ref={ref} className={styles.track}>
+      {all.map((img, i) => (
+        <img
+          key={i}
+          src={imgSrc(img)}
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          style={{ height: HEIGHT, width: imgW(img), flexShrink: 0, borderRadius: 12, objectFit: "cover" }}
+        />
+      ))}
     </div>
   );
-};
+}

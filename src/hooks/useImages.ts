@@ -7,26 +7,41 @@ export interface ImageItem {
   height: number;
 }
 
-export const useImages = (count: number = 20) => {
+const fetchImages = (count: number) =>
+  fetch(`https://picsum.photos/v2/list?page=1&limit=${count}`).then(
+    (r) => r.json() as Promise<ImageItem[]>
+  );
+
+export const useImages = (count: number = 30) => {
   const [images, setImages] = useState<ImageItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchImages = async () => {
-      try {
-        const res = await fetch(
-          `https://picsum.photos/v2/list?page=1&limit=${count}`
-        );
-        const data = await res.json();
-        setImages(data);
-      } catch (err) {
-        console.error("Failed to fetch images", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+    let alive = true;
 
-    fetchImages();
+    (async () => {
+      try {
+        // Small initial batch renders the carousel fast
+        const initial = await fetchImages(Math.min(10, count));
+        if (!alive) return;
+        setImages(initial);
+        setLoading(false);
+
+        // Full set loads quietly in the background
+        if (count > 10) {
+          const full = await fetchImages(count);
+          if (!alive) return;
+          setImages(full);
+        }
+      } catch (err) {
+        console.error(err);
+        if (alive) setLoading(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
   }, [count]);
 
   return { images, loading };
